@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 const path = require('path');
+const dns = require('dns');
 
 // Load environment variables from .env if present
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -30,6 +31,7 @@ app.use(
 // 2. CORS Configuration
 const allowedOrigins = [
   CLIENT_URL,
+  'https://sanketsatras.github.io',
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:5500',
@@ -43,7 +45,12 @@ app.use(
     origin: function (origin, callback) {
       // Allow requests with no origin (e.g. mobile apps, curl, Postman, file://)
       if (!origin) return callback(null, true);
-      if (NODE_ENV === 'development' || allowedOrigins.includes(origin)) {
+      if (
+        NODE_ENV === 'development' ||
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.github.io') ||
+        origin.includes('onrender.com')
+      ) {
         return callback(null, true);
       }
       return callback(new Error(`CORS blocked request from unauthorized origin: ${origin}`));
@@ -126,15 +133,25 @@ const connectDB = async () => {
     mongoUri = 'mongodb://127.0.0.1:27017/peopledesk';
   }
 
+  // Handle DNS SRV lookup resolution for MongoDB Atlas on Windows/certain ISPs
+  if (mongoUri.startsWith('mongodb+srv://')) {
+    try {
+      dns.setServers(['8.8.8.8', '1.1.1.1']);
+    } catch (dnsErr) {
+      // Fallback silently if OS restricts custom DNS servers
+    }
+  }
+
   try {
-    console.log(`🔌 Attempting MongoDB connection to: ${mongoUri.replace(/:([^:@]{4})[^:@]*@/, ':****@')}`);
+    const maskedUri = mongoUri.replace(/:([^:@]+)@/, ':****@');
+    console.log(`🔌 Attempting MongoDB connection to: ${maskedUri}`);
     await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 3000
+      serverSelectionTimeoutMS: 10000
     });
     console.log(`✅ MongoDB Connected Successfully: ${mongoose.connection.host}/${mongoose.connection.name}`);
     await autoSeedIfEmpty();
   } catch (err) {
-    console.warn(`\n⚠️  Could not connect to local MongoDB (${err.message})`);
+    console.warn(`\n⚠️  Could not connect to MongoDB (${err.message})`);
     console.log('⚡ Launching embedded MongoDB Memory Server as zero-setup fallback...');
     try {
       const { MongoMemoryServer } = require('mongodb-memory-server');

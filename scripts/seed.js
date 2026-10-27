@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const path = require('path');
+const dns = require('dns');
 const Employee = require('../models/Employee');
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -67,9 +68,18 @@ const SAMPLE_EMPLOYEES = [
 const seedDatabase = async () => {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/peopledesk';
 
+  if (mongoUri.startsWith('mongodb+srv://')) {
+    try {
+      dns.setServers(['8.8.8.8', '1.1.1.1']);
+    } catch (dnsErr) {
+      // Fallback silently if OS restricts custom DNS servers
+    }
+  }
+
   try {
-    console.log(`Connecting to MongoDB at: ${mongoUri}`);
-    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
+    const maskedUri = mongoUri.replace(/:([^:@]+)@/, ':****@');
+    console.log(`Connecting to MongoDB at: ${maskedUri}`);
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 });
     console.log('✅ Connected to MongoDB.');
 
     const existingCount = await Employee.countDocuments();
